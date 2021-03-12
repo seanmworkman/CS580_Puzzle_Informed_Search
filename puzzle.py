@@ -5,24 +5,25 @@ import time
 import sys
 import random
 import math
+import heapq
 
-# rows = 5
-# columns = 5
-# goal = [
-#     [1, 2, 3, 4, 5],
-#     [6, 7, 8, 9, 10],
-#     [11, 12, 13, 14, 15],
-#     [16, 17, 18, 19, 20],
-#     [21, 22, 23, 24, 0]
-# ]
-
-rows = 3
-columns = 3
+rows = 5
+columns = 5
 goal = [
-    [1, 2, 3],
-    [4, 5, 6],
-    [7, 8, 0]
+    [1, 2, 3, 4, 5],
+    [6, 7, 8, 9, 10],
+    [11, 12, 13, 14, 15],
+    [16, 17, 18, 19, 20],
+    [21, 22, 23, 24, 0]
 ]
+
+# rows = 3
+# columns = 3
+# goal = [
+#     [1, 2, 3],
+#     [4, 5, 6],
+#     [7, 8, 0]
+# ]
 
 initial = []
 
@@ -166,8 +167,10 @@ def getStatesH1(state):
 def getDistanceBetweenPoints(x, y):
     # print("1", x, y, (abs(x[1] - x[0]) + abs(y[1] - y[0])))
     # print("2", x, y, (math.sqrt((x[1] - x[0]) ** 2 + (y[1] - y[0]) ** 2)))
-    # return abs(x[1] - x[0]) + abs(y[1] - y[0])
+    # print(x, y)
+    # distance = abs(x[1] - x[0]) + abs(y[1] - y[0])
     distance = abs(x[1] - y[1]) + abs(x[0] + y[0])
+    
     # print("3", x, y, distance)
     return distance
 
@@ -183,13 +186,12 @@ def getCoordinates(state, element):
 
 # Helper function for heuristic 2
 def getSumDistance(state):
-    distance = 0
+    stateList = []
     for i in range(rows):
         for j in range(columns):
-            goalCoords = (i, j)
-            stateCoords = getCoordinates(state, goal[i][j])
-            distance += getDistanceBetweenPoints(goalCoords, stateCoords)
-
+            stateList.append(state[i][j])
+    distance = sum(abs((val-1)%3 - i%3) + abs((val-1)//3 - i//3)
+        for i, val in enumerate(stateList) if val)
     return distance
 
 # Helper function to sort the options based on distance sums
@@ -202,58 +204,66 @@ def getStatesH2(state):
     optionsWithH2.sort(key = lambda x: x[1])
     return optionsWithH2
 
-# Heuristic 1
-# Number of misplaced tiles
-def h1(initial):
-    # Create frontier stack
-    frontier = Stack()
+# Heuristic 1 using a heapq (priority queue)
+def h1Heap(initial):
+    # Create frontier heap
+    frontier = []
+    heapq.heapify(frontier)
+
     explored = []
     frontierList = []
     # Add initial state to frontier
-    frontier.add(initial)
+    heapq.heappush(frontier, (initial, getNumberOfMisplaced(initial)))
     frontierList.append(initial)
-    # Go through the stack until it is empty 
-    while frontier.size() > 0:
-        # Pop the element from the stack
-        state = frontier.remove()
-
+    # Go through the heap until it is empty 
+    while len(list(frontier)) > 0:
+        # Pop the element from the heap
+        state = heapq.heappop(frontier)
+        # print(state)
         # Add it to explored
-        explored.append(state)
+        explored.append(state[0])
 
         if not quiet:
-            printState(state)
+            printState(state[0])
+            # print(state[0])
 
         # Check if the current state is the goal state
-        if goalTest(state):
+        if goalTest(state[0]):
             return "Success"
 
         # Get move states ordered by misplaced tiles
-        options = getStatesH1(state)
+        options = getStatesH1(state[0])
         # print(options)
         for neighbor in options:
             if not neighborInExplored(neighbor[0], explored) and not neighborInExplored(neighbor[0], frontierList):
-                frontier.add(neighbor[0])
+                heapq.heappush(frontier, neighbor)
                 frontierList.append(neighbor[0])
     return "FAILURE"
-    # explored = []
 
-    # state = initial
 
-    # # Go until goal state is met
-    # while not goalTest(state):
-    #     found = False
-    #     explored.append(state)
-    #     printState(state)
-    #     # Get move states ordered by misplaced tiles
-    #     options = getStatesH1(state)
-    #     for neighbor in options:
-    #         # If neighbor hasn't been explored yet make it the state and break the loop
-    #         if not neighborInExplored(neighbor[0], explored):
-    #             found = True
-    #             state = neighbor[0]
-    #             break
-    # printState(state)
-    # return "SUCCESS"
+# Heuristic 1
+# Number of misplaced tiles
+def h1(initial):
+    explored = []
+
+    state = initial
+
+    # Go until goal state is met
+    while not goalTest(state):
+        explored.append(state)
+        printState(state)
+        temp = state
+        # Get move states ordered by misplaced tiles
+        options = getStatesH1(state)
+        for neighbor in options:
+            # If neighbor hasn't been explored yet make it the state and break the loop
+            if not neighborInExplored(neighbor[0], explored):
+                state = neighbor[0]
+                break
+        if areEqualStates(temp, state):
+            return "FAILURE"
+    printState(state)
+    return "SUCCESS"
 
 # Heuristic 2
 # Sum of the distances of every tile to its goal position
@@ -261,28 +271,59 @@ def h2(initial):
     explored = []
 
     state = initial
-
+    
     # Go until goal state is met
     while not goalTest(state):
-        found = False
         explored.append(state)
         printState(state)
         # Get move states ordered by heuristic 2
         options = getStatesH2(state)
-
+        temp = state
         for neighbor in options:
             # If neighbor hasn't been explored yet make it the state and break the loop
             if not neighborInExplored(neighbor[0], explored):
-                found = True
                 state = neighbor[0]
                 break
-
-        # If all neighbors have been explored clear out explored to allow for more moves
-        if not found:
-            explored = []
-
+        if areEqualStates(temp, state):
+            return "FAILURE"
     printState(state)
     return "SUCCESS"
+
+# Heuristic 2 using a heapq (priority queue)
+def h2Heap(initial):
+    # Create frontier heap
+    frontier = []
+    heapq.heapify(frontier)
+
+    explored = []
+    frontierList = []
+    # Add initial state to frontier
+    heapq.heappush(frontier, (initial, getNumberOfMisplaced(initial)))
+    frontierList.append(initial)
+    # Go through the heap until it is empty 
+    while len(list(frontier)) > 0:
+        # Pop the element from the heap
+        state = heapq.heappop(frontier)
+        # print(state)
+        # Add it to explored
+        explored.append(state[0])
+
+        if not quiet:
+            printState(state[0])
+            # print(state[0])
+
+        # Check if the current state is the goal state
+        if goalTest(state[0]):
+            return "Success"
+
+        # Get move states ordered by misplaced tiles
+        options = getStatesH2(state[0])
+        # print(options)
+        for neighbor in options:
+            if not neighborInExplored(neighbor[0], explored) and not neighborInExplored(neighbor[0], frontierList):
+                heapq.heappush(frontier, neighbor)
+                frontierList.append(neighbor[0])
+    return "FAILURE"
 
 def runSearch(mode):
     if mode.lower() == "h1":
@@ -290,23 +331,25 @@ def runSearch(mode):
         print(h1(initial))
         elapsed_time = time.time() - start_time
         print('Heuristic 1 finished in {}'.format(elapsed_time))
-    else:
+    elif mode.lower() == "h2":
         start_time = time.time()
         print(h2(initial))
         elapsed_time = time.time() - start_time
         print('Heuristic 2 finished in {}'.format(elapsed_time))
+    elif mode.lower() == "h1heap":
+        start_time = time.time()
+        print(h1Heap(initial))
+        elapsed_time = time.time() - start_time
+        print('Heuristic 1 finished in {}'.format(elapsed_time))
+    elif mode.lower() == "h2heap":
+        start_time = time.time()
+        print(h2Heap(initial))
+        elapsed_time = time.time() - start_time
+        print('Heuristic 2 finished in {}'.format(elapsed_time))
 
 initial = generateInitial()
-# initial = [
-#     [5, 7, 0],
-#     [8, 6, 2],
-#     [3, 1, 4]
-# ]
 quiet = False
 if len(sys.argv) >= 3:
     if sys.argv[2] == "--quiet":
         quiet = True
 runSearch(sys.argv[1])
-# printState(initial)
-# print(getSumDistance(initial))
-
